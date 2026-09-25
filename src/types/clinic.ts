@@ -18,36 +18,120 @@ export interface Usuario {
   avatar: string;
   ativo: boolean;
   ultimoAcesso: string;
+  permissoes?: string[];
+  systemPassword?: string;
+  personalPasscode?: string;
+}
+
+export type StatusPaciente =
+  | 'ATIVO'
+  | 'INATIVO'
+  | 'EM_ACOMPANHAMENTO'
+  | 'ENCERRADO'
+  | 'EM_TRATAMENTO'
+  | 'SUSPENSO'
+  | 'ALTA';
+
+export interface ResponsavelLegal {
+  id: string;
+  nome: string;
+  parentesco: string; // 'Mãe' | 'Pai' | 'Tutor Legal' | 'Avó/Avô' | 'Cônjuge' | 'Outro'
+  telefone: string;
+  email?: string;
+  cpf?: string;
+  principal: boolean;
+  observacao?: string;
+}
+
+export interface HistoricoCarteirinha {
+  id: string;
+  convenioId: string;
+  convenioNome: string;
+  numeroCarteirinha: string;
+  dataInicio: string; // YYYY-MM-DD
+  dataFim?: string; // YYYY-MM-DD (quando encerrada)
+  status: 'ATUAL' | 'ENCERRADA';
+  observacao?: string;
+  criadoPorUsuario: string;
+  criadoEm: string;
+}
+
+export interface FormularioCadastroPaciente {
+  nomeArquivo: string;
+  tipoArquivo: 'pdf' | 'jpeg';
+  tamanhoKb: number;
+  dataEmissao: string; // YYYY-MM-DD
+  dataVencimento: string; // Automaticamente 180 dias após dataEmissao
+  statusVencimento: 'VALIDO' | 'ALERTA_PROXIMO_VENCIMENTO' | 'VENCIDO';
+  diasRestantes?: number;
+  baixarUrl?: string;
 }
 
 export interface Paciente {
   id: string;
   codigoProntuario: string;
   nome: string;
-  dataNascimento: string;
-  idade: number;
-  responsavelNome: string;
-  cpfMascarado: string;
+  dataNascimento?: string;
+  idade?: number;
+  cpf?: string;
+  cpfMascarado?: string;
   carteirinha: string;
+  carteirinhaAtual?: string;
+  carteirinhaAtualMascarada?: string;
   convenioId: string;
   convenioNome: string;
+  convenioPrincipalId?: string;
+  convenioPrincipalNome?: string;
   procedimentoPrincipal: string;
   prestadorId: string;
-  status: 'ATIVO' | 'EM_TRATAMENTO' | 'SUSPENSO' | 'ALTA';
+  prestadorNome?: string;
+  status: StatusPaciente;
+  responsavelNome?: string;
+  responsavelPrincipalNome?: string;
+  responsaveis?: ResponsavelLegal[];
+  carteirinhas?: HistoricoCarteirinha[];
+  formulario?: FormularioCadastroPaciente;
+  ultimaAutorizacaoData?: string;
+  proximaAutorizacaoData?: string;
+  pendenciasQuantidade?: number;
+  diaDaSemana?: string;
+  doutoresAtendentesIds?: string[];
+  doutoresAtendentesNomes?: string[];
+  observacoes?: string;
+  dataCriacao?: string;
   dataUltimaAtualizacao: string;
+  atualizadoPor?: string;
+}
+
+export interface ResultadoVerificacaoDuplicidadePaciente {
+  possivelDuplicidade: boolean;
+  motivoCorrespondencia?: 'CPF_IDENTICO' | 'CARTEIRINHA_IDENTICA' | 'NOME_E_NASCIMENTO_IDENTICOS';
+  pacienteExistente?: Paciente;
+  detalhes: string;
+}
+
+export interface FiltroPacientesUsuario {
+  busca: string;
+  status: string; // 'TODOS' | StatusPaciente
+  convenioId: string; // 'TODOS' | string
+  comPendenciasApenas: boolean;
+  formularioVencidoApenas: boolean;
 }
 
 export interface Prestador {
   id: string;
   nome: string;
+  cpf?: string;
   titulo: string;
   cbo: string;
   crmOuCrp: string;
-  orgaoClasse: 'CRM' | 'CRP' | 'CREFITO' | 'CRFa';
+  orgaoClasse: 'CRM' | 'CRP' | 'CREFITO' | 'CRFa' | 'Outro';
   uf: string;
   especialidade: string;
+  procedimentos?: string[];
   pastaAtribuida: string;
   ativo: boolean;
+  tipo?: 'MEFISA' | 'PRESTADOR';
 }
 
 export interface Procedimento {
@@ -128,6 +212,7 @@ export interface Sessao {
 export interface GuiaDigitacao {
   id: string;
   numeroGuia: string;
+  numeroConta?: string;
   autorizacaoId: string;
   pacienteId: string;
   pacienteNome: string;
@@ -150,6 +235,8 @@ export interface GuiaDigitacao {
     | 'REVISAR_INCONSISTENCIA';
   duplicidadeDetectada: boolean;
   observacoes?: string;
+  senha?: string;
+  dataValidadeSenha?: string;
 }
 
 export interface AnaliseConvenio {
@@ -210,3 +297,125 @@ export interface FiltrosUsuarioLocal {
   statusFiltro: string;
   modoDensidade: 'confortavel' | 'compacta';
 }
+
+export type TipoFeriado =
+  | 'NACIONAL'
+  | 'ESTADUAL_SP'
+  | 'MUNICIPAL_FERRAZ'
+  | 'ADMINISTRATIVO_MEFISA';
+
+export interface FeriadoConfig {
+  id: string;
+  data: string; // YYYY-MM-DD
+  nome: string;
+  tipo: TipoFeriado;
+  regraDeterminante: string;
+  descricao?: string;
+  bloqueiaAtendimento: boolean;
+}
+
+export type DiaSemanaIndice = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=Domingo, 1=Segunda, ..., 6=Sábado
+
+export interface AlinhamentoAutorizacaoResultado {
+  diaSemanaHabitual: DiaSemanaIndice;
+  diaSemanaNome: string;
+  mesCompetenciaReferencia: string; // Ex: 'Novembro/2026'
+  dataReferenciaInicialCorte: string;
+  dataProximaAutorizacaoCalculada: string;
+  foiDeslocadoParaDiaAnterior: boolean;
+  diasDeslocadosAnterior: number;
+  adicionouOcorrenciaSemanal: boolean;
+  semanasCicloCalculadas: number;
+  totalSessoesSugeridas: number;
+  excecaoSabado: {
+    detectada: boolean;
+    dataSabadoOriginal?: string;
+    dataSugeridaDeslocamento?: string;
+    justificativaOperacional?: string;
+    diasAlternativosDisponiveis?: Array<{ data: string; descricao: string }>;
+  };
+  regraDescritiva: string;
+}
+
+export interface ConflitoFeriadoSessao {
+  dataOriginal: string;
+  diaSemanaNome: string;
+  feriado: FeriadoConfig;
+  motivoConflito: string;
+  novaDataSugerida: string;
+  impactoCronograma: string;
+  impactoProximaAutorizacao?: string;
+}
+
+export interface ValidacaoRemarcacaoResultado {
+  valido: boolean;
+  ehAnomalia: boolean;
+  diasDiferenca: number;
+  dataOriginal: string;
+  novaData: string;
+  mensagemAlerta?: string;
+  exigeConfirmacaoExplicita: boolean;
+}
+
+export interface NotificacaoAnomaliaGestao {
+  id: string;
+  dataHora: string;
+  pacienteNome: string;
+  procedimentoNome: string;
+  dataOriginal: string;
+  novaData: string;
+  diasDiferenca: number;
+  usuarioNome: string;
+  usuarioPapel: string;
+  motivoConfirmado: string;
+  destinatarios: Array<'ADM_CHEFE' | 'CEO'>;
+  status: 'DISPARADA_IMEDIATA' | 'LIDA_GESTAO';
+}
+
+export type NivelSlaAnalise = 'NORMAL' | 'ATENCAO_PREVENTIVA' | 'ATRASADO_CRITICO';
+
+export type ModoAbatimentoFaltas =
+  | 'DESCONTAR_PROXIMA_AUTORIZACAO'
+  | 'MANTER_INTEGRAL_REPOSICAO_PRONTUARIO';
+
+export interface CanaisNotificacaoConfig {
+  painelInterno: boolean;
+  email: boolean;
+  webhook: boolean;
+  destinatariosEmails: string[];
+  webhookUrl?: string;
+}
+
+export interface GatilhosNotificacaoConfig {
+  remarcacaoAnormal: boolean; // Saltos >= 20 dias
+  duplicidadeConfirmada: boolean; // Gravação excepcional de duplicata
+  analiseAtrasada7Dias: boolean; // SLA de análise estourado (> 7 dias)
+  analiseAtencao5Dias: boolean; // Alerta preventivo (5 a 7 dias)
+  feriadoConflitoFerraz: boolean; // Conflito com feriado em Ferraz de Vasconcelos
+}
+
+export interface PreferenciasNotificacaoGestao {
+  canais: CanaisNotificacaoConfig;
+  gatilhos: GatilhosNotificacaoConfig;
+}
+
+export interface ValidacaoDuplicidadeGuiaSessao {
+  chaveValidacao: string; // "PACIENTE_ID|PROCEDIMENTO_ID|DATA"
+  pacienteNome: string;
+  procedimentoNome: string;
+  dataSessao: string;
+  numeroGuiaInformado?: string;
+  duplicada: boolean;
+  registroExistente?: {
+    guiaId: string;
+    numeroGuia: string;
+    pacienteNome: string;
+    procedimentoNome: string;
+    dataSessao: string;
+    status: string;
+  };
+  mensagem: string;
+  exigeConfirmacaoComJustificativa: boolean; // Confirmado pela Gestão: Opção B
+}
+
+

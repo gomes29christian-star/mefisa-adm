@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { SecretAchievementsProvider } from './context/SecretAchievementsContext';
+import { DateFormatProvider } from './context/DateFormatContext';
 import { Header } from './components/layout/Header';
 import { Sidebar, NavItemKey } from './components/layout/Sidebar';
 import { SpreadsheetCentralView } from './components/central/SpreadsheetCentralView';
@@ -12,33 +13,102 @@ import { AnalisesView } from './components/views/AnalisesView';
 import { PrestadoresView } from './components/views/PrestadoresView';
 import { PendenciasView } from './components/views/PendenciasView';
 import { UsuariosConfigView } from './components/views/UsuariosConfigView';
+import { ConfiguracoesRegrasView } from './components/views/ConfiguracoesRegrasView';
+import { ImportacaoView } from './components/views/ImportacaoView';
 import { CalculationPreviewModal } from './components/common/CalculationPreviewModal';
 import { AuditTrailDrawer } from './components/common/AuditTrailDrawer';
 import { ArchitectureDocModal } from './components/documentation/ArchitectureDocModal';
 import { SecretAchievementsModal } from './components/common/SecretAchievementsModal';
 import { MOCK_USUARIOS, MOCK_AUDITORIA, MOCK_PENDENCIAS } from './data/mockClinicData';
 import { Usuario } from './types/clinic';
+import { carregarAutorizacoesIniciais, salvarAutorizacoesStorage } from './services/autorizacoesService';
+import { AutorizacaoV2 } from './types/autorizacao';
+import { LoginLockScreen } from './components/auth/LoginLockScreen';
+import { carregarUsuariosIniciais } from './services/userService';
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<NavItemKey>('central_dados');
-  const [activeUsuario, setActiveUsuario] = useState<Usuario>(MOCK_USUARIOS[1]); // Maria Clara (Autorizações)
+  const [isSessionUnlocked, setIsSessionUnlocked] = useState<boolean>(() => {
+    // ESTE NAVEGADOR entra direto sem precisar de senha por padrão
+    const isTrusted = localStorage.getItem('mefisa_trusted_browser');
+    if (isTrusted === null || isTrusted === 'true') {
+      localStorage.setItem('mefisa_trusted_browser', 'true');
+      return true;
+    }
+    return false;
+  });
+  const [allUsers, setAllUsers] = useState<Usuario[]>(() => carregarUsuariosIniciais());
+  const [activeTab, setActiveTab] = useState<NavItemKey>('dashboard');
+  const [activeUsuario, setActiveUsuario] = useState<Usuario>(() => {
+    try {
+      const savedUsers = carregarUsuariosIniciais();
+      if (savedUsers.length > 0) {
+        const savedActiveId = localStorage.getItem('clinica_mefisa_active_usuario_id_v1');
+        const found = savedUsers.find((u: Usuario) => u.id === savedActiveId);
+        if (found) return found;
+        return savedUsers[0];
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return MOCK_USUARIOS[0] || {
+      id: 'usr-admin',
+      nome: 'Administrador do Sistema',
+      email: 'admin@clinicamefisa.com.br',
+      papel: 'ADMINISTRADOR',
+      departamento: 'Direção Geral',
+      avatar: 'ADM',
+      ativo: true,
+      ultimoAcesso: 'Hoje',
+    };
+  });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('clinica_mefisa_active_usuario_id_v1', activeUsuario.id);
+    } catch (e) {}
+  }, [activeUsuario]);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [isArchDocOpen, setIsArchDocOpen] = useState(false);
 
+  const [autorizacoesApp, setAutorizacoesApp] = useState<AutorizacaoV2[]>(() => carregarAutorizacoesIniciais());
+
+  React.useEffect(() => {
+    setAutorizacoesApp(carregarAutorizacoesIniciais());
+  }, [activeTab]);
+
+  const guiasAguardandoCount = autorizacoesApp.filter((a) => a.status === 'CONCLUIDO').length;
+
   const pendingCounts = {
     pendencias: MOCK_PENDENCIAS.length,
-    analisesAtraso: 2,
-    guiasAguardando: 17,
+    analisesAtraso: 0,
+    guiasAguardando: guiasAguardandoCount,
+  };
+
+  const handleNavigate = (tab: NavItemKey) => {
+    setActiveTab(tab);
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-['Nunito_Sans'] text-slate-800 antialiased selection:bg-blue-100 selection:text-[#002172]">
+    <>
+      {!isSessionUnlocked && (
+        <LoginLockScreen
+          usuarios={allUsers}
+          onUnlock={(usr) => {
+            setActiveUsuario(usr);
+            setIsSessionUnlocked(true);
+          }}
+        />
+      )}
+
+      <div className="min-h-screen flex bg-slate-50 dark:bg-[#0a0f1d] font-['Nunito_Sans'] text-slate-800 dark:text-slate-100 antialiased selection:bg-blue-100 selection:text-[#002172] transition-colors">
       {/* Sidebar de Navegação */}
       <Sidebar
         activeKey={activeTab}
-        onNavigate={(tab) => setActiveTab(tab)}
+        onNavigate={handleNavigate}
         pendingCounts={pendingCounts}
+        usuarioAtual={activeUsuario}
+        onOpenArchitectureDocs={() => setIsArchDocOpen(true)}
       />
 
       {/* Conteúdo Principal */}
@@ -46,8 +116,6 @@ function MainApp() {
         <Header
           activeUsuario={activeUsuario}
           onSelectUsuario={(usr) => setActiveUsuario(usr)}
-          onOpenCalculator={() => setIsCalculatorOpen(true)}
-          onOpenArchitectureDocs={() => setIsArchDocOpen(true)}
         />
 
         <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
@@ -61,6 +129,7 @@ function MainApp() {
 
           {activeTab === 'dashboard' && (
             <DashboardView
+              activeUsuario={activeUsuario}
               onNavigate={(tab) => setActiveTab(tab)}
               onOpenCalculator={() => setIsCalculatorOpen(true)}
               onOpenAudit={() => setIsAuditOpen(true)}
@@ -71,6 +140,8 @@ function MainApp() {
             <PacientesView
               onOpenAudit={() => setIsAuditOpen(true)}
               onOpenCalculator={() => setIsCalculatorOpen(true)}
+              onNavigate={(tab) => setActiveTab(tab)}
+              usuarioAtual={activeUsuario}
             />
           )}
 
@@ -78,6 +149,7 @@ function MainApp() {
             <AutorizacoesView
               onOpenCalculator={() => setIsCalculatorOpen(true)}
               onOpenAudit={() => setIsAuditOpen(true)}
+              usuarioAtual={activeUsuario}
             />
           )}
 
@@ -117,9 +189,9 @@ function MainApp() {
                 </button>
               </div>
               <div className="space-y-2">
-                {MOCK_AUDITORIA.map((log) => (
+                {MOCK_AUDITORIA.map((log, idx) => (
                   <div
-                    key={log.id}
+                    key={`${log.id || 'log'}-${idx}`}
                     className="p-3 bg-slate-50 border rounded-xl flex items-center justify-between text-xs"
                   >
                     <div>
@@ -141,41 +213,19 @@ function MainApp() {
             </div>
           )}
 
-          {activeTab === 'usuarios' && (
-            <UsuariosConfigView
+          {activeTab === 'configuracoes' && (
+            <ConfiguracoesRegrasView
               activeUsuario={activeUsuario}
               onSelectUsuario={(usr) => setActiveUsuario(usr)}
             />
           )}
 
-          {activeTab === 'configuracoes' && (
-            <div className="space-y-6">
-              <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-                <h2 className="text-xl font-bold font-['Quicksand'] text-slate-900">
-                  Configurações Operacionais & Regras de Negócio
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Parâmetros centrais do sistema da Clínica Mefisa.
-                </p>
-
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-2 text-amber-950">
-                  <div className="font-bold text-sm">
-                    Regras a Confirmar pela Gestão Administrativa [REGRA A CONFIRMAR]:
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>
-                      <strong>Corte de Semanas que cruzam meses:</strong> Definir se a semana iniciada no final do mês é computada no mês de origem ou no mês de destino.
-                    </li>
-                    <li>
-                      <strong>Contagem de Dias de Análise:</strong> O gatilho de alerta de 7 dias considerará dias corridos ou dias úteis de atendimento das operadoras?
-                    </li>
-                    <li>
-                      <strong>Alerta de Duplicidade de Guia:</strong> A verificação deve travar por Número da Guia ou pela combinação Paciente + Prestador + Data da Sessão?
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+          {activeTab === 'importacao' && (
+            <ImportacaoView
+              onOpenAudit={() => setIsAuditOpen(true)}
+              usuarioAtualNome={activeUsuario.nome}
+              usuarioAtual={activeUsuario}
+            />
           )}
 
           {activeTab === 'sessoes' && (
@@ -212,6 +262,48 @@ function MainApp() {
       <CalculationPreviewModal
         isOpen={isCalculatorOpen}
         onClose={() => setIsCalculatorOpen(false)}
+        usuarioAtualNome={activeUsuario.nome}
+        usuarioAtualPapel={activeUsuario.papel}
+        onConfirmCalculation={(resultado) => {
+          const novasAuts = carregarAutorizacoesIniciais();
+          const novaAut: AutorizacaoV2 = {
+            id: `aut-v2-${Date.now()}`,
+            numeroAutorizacao: `AUT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+            pacienteId: 'pac-1',
+            pacienteNome: resultado.pacienteNome || 'Maurício Rezende Filho',
+            carteirinha: '00624689123',
+            operadora: 'SulAmérica Saúde',
+            procedimento: resultado.procedimentoNome || 'Psicologia ABA',
+            prestador: 'Dra. Ana Beatriz Albuquerque',
+            cbo: '251510',
+            crm: 'CRP 06/12345',
+            dataSolicitacao: new Date().toISOString().split('T')[0],
+            dataAutorizacao: new Date().toISOString().split('T')[0],
+            quantidadeSolicitada: resultado.quantidadeConfirmada || 12,
+            competencia: resultado.alinhamento?.mesCompetenciaReferencia || '2026-10',
+            proximaAutorizacao: resultado.alinhamento?.dataProximaAutorizacaoCalculada || '2026-10-28',
+            status: 'CONCLUIDO',
+            responsavel: activeUsuario.nome,
+            ultimaAtualizacao: new Date().toISOString(),
+            diasEmAnalise: 0,
+            senha: resultado.senha || 'SENHA-EXEMPLO-99',
+            dataValidadeSenha: resultado.dataValidadeSenha || '2026-11-28',
+            observacoes: 'Gerado via Motor de Regras com senha e validade registradas.',
+            historico: [
+              {
+                id: `hist-${Date.now()}`,
+                statusAnterior: 'EM_ANALISE',
+                novoStatus: 'CONCLUIDO',
+                usuarioNome: activeUsuario.nome,
+                dataHora: new Date().toLocaleString('pt-BR'),
+                justificativa: 'Autorização calculada com senha e validade registradas para a aba lateral.',
+              }
+            ]
+          };
+          novasAuts.unshift(novaAut);
+          salvarAutorizacoesStorage(novasAuts);
+          setActiveTab('guias');
+        }}
       />
 
       <AuditTrailDrawer
@@ -227,6 +319,7 @@ function MainApp() {
 
       <SecretAchievementsModal />
     </div>
+    </>
   );
 }
 
@@ -234,7 +327,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <SecretAchievementsProvider>
-        <MainApp />
+        <DateFormatProvider>
+          <MainApp />
+        </DateFormatProvider>
       </SecretAchievementsProvider>
     </ThemeProvider>
   );
